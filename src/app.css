@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+
+@layer base {
+	/*
+		The document does not scroll. One element inside it does.
+
+		This is the fix for the screenful of blank below the credit line, and it is the third attempt:
+		`min-h-screen` → `min-h-dvh` → `min-h-svh` each made the *container* honest about the viewport,
+		and none of them touched the thing actually producing the blank, because that thing is not the
+		container. Two iOS behaviours are, and they compound:
+
+		1. **The document is scrollable even when the content fits.** iOS sizes the page's scrollable
+		   area against the *layout* viewport, which is the one you get with the toolbars hidden — so a
+		   page that exactly fills the screen you are looking at still has a toolbar's worth of scroll
+		   under it, and scrolling into it shows background below the footer. No height on the
+		   container can remove that, because the slack does not belong to the container.
+		2. **`overscroll-behavior` does not bind on the document.** Setting it on `html`, which is what
+		   was tried here first, is a no-op on iOS: Safari honours the property on element scrollers and
+		   ignores it for the page. So the rubber band on top of (1) stayed as well.
+
+		Both stop existing if the page cannot scroll at all. `html` is pinned to the small viewport —
+		the one with the toolbars *shown*, which is the only height certain to be on screen — and
+		clipped, which leaves nothing for either behaviour to act on. The scrolling moves to `body`,
+		which is an ordinary element scroller: its height is honest by construction, and
+		`overscroll-behavior` binds there, so its own bounce goes too.
+
+		What this spends is pull-to-refresh, which the `.wheel` note in `Wheel.svelte` was right to want
+		back, and the toolbars no longer collapse as you scroll — with no document scroll there is
+		nothing to collapse them. Both are cheap here: the page is prerendered from a taxonomy that
+		does not change, so a refresh has nothing to fetch, and the layout is built to fit the small
+		viewport anyway, so the room the collapsed toolbars would have bought is room it was not using.
+	*/
+	html {
+		height: 100svh;
+		overflow: hidden;
+	}
+
+	body {
+		height: 100%;
+		overflow-y: auto;
+		/*
+			Belt to the braces above. The page cannot bounce because it cannot scroll; this is about
+			`body` itself, which now can — when the list is unfolded, or on a screen too short for the
+			Wheel. Bounded here rather than left alone so that a flick against the end of a scroller that
+			happens to have only a few dozen pixels in it does not reproduce the original symptom one
+			level down.
+		*/
+		overscroll-behavior-y: none;
+		background: var(--color-stone-50);
+	}
+
+	/*
+		Visible focus on everything operable, in one place. Ticket 09 asks for focus indication
+		throughout, and a rule written per component is a rule that eventually gets missed.
+	*/
+	:where(a, button, summary, input, [tabindex]):focus-visible {
+		outline: 2px solid var(--color-teal-700);
+		outline-offset: 2px;
+	}
+}
