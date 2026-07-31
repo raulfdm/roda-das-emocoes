@@ -1,18 +1,18 @@
 name = "roda-das-emocoes"
 compatibility_date = "2026-07-31"
 
-# The app is one prerendered page with no server code (ADR-0005, ADR-0007), so
-# this Worker has no `main` entry point — it serves `build/` and nothing else.
+# The app is one prerendered page with no server-rendered content (ADR-0005,
+# ADR-0007). The Worker here is not a server: it renders nothing and reads
+# nothing, and only ever runs for a request that matched no file in `build/`.
+# See `src/worker.ts` for why that job cannot be done by `static/_redirects`.
+main = "src/worker.ts"
+
 [assets]
 directory = "./build"
 
-# `not_found_handling` is left at its default. The two alternatives both undo
-# what `static/_redirects` is for: "single-page-application" rewrites unknown
-# paths to `/` with a 200, leaving the URL bar on a route the client router
-# doesn't know, and "404-page" would need a 404.html adapter-static never emits.
-# `_redirects` runs first and answers every miss with a 302 to `/`.
-#
-# "Runs first" is literal, and is the one thing to keep in mind when editing that
-# file: Workers Assets does not check for a matching asset before applying
-# redirects, so a rule is not scoped to 404s just because it was written for
-# them. Every path the site actually serves has to be exempted by name there.
+# `not_found_handling` is left at its default, which is what routes a miss to the
+# Worker at all. Both alternatives would take that away: "single-page-application"
+# answers a miss with the `/` HTML at a 200, leaving the URL bar on a route the
+# client router does not know, and "404-page" needs a 404.html adapter-static
+# never emits. At the default, an unmatched request falls through to
+# `src/worker.ts`, which is the one place that decides what a miss means.
