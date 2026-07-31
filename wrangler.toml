@@ -1,0 +1,13 @@
+name = "roda-das-emocoes"
+compatibility_date = "2026-07-31"
+
+# The app is one prerendered page with no server code (ADR-0005, ADR-0007), so
+# this Worker has no `main` entry point — it serves `build/` and nothing else.
+[assets]
+directory = "./build"
+
+# `not_found_handling` is left at its default. The two alternatives both undo
+# what `static/_redirects` is for: "single-page-application" rewrites unknown
+# paths to `/` with a 200, leaving the URL bar on a route the client router
+# doesn't know, and "404-page" would need a 404.html adapter-static never emits.
+# `_redirects` runs first and answers every miss with a 302 to `/`.
