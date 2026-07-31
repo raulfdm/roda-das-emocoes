@@ -1,0 +1,12 @@
+# The app has one route (ADR-0005: the Wheel's place is not addressable), so any
+# other path is a typo or a stale link. Send it to the Wheel rather than a 404.
+#
+# This is a 302, not a `200` rewrite. A rewrite would serve the prerendered `/`
+# HTML while the URL bar still read `/whatever`, and the client router — which
+# knows only `/` — would find no matching route on hydration and render its own
+# 404 over the top. Redirecting fixes the URL first, so the app boots on the
+# route it was built for. Cloudflare carries the query string across, which is
+# what keeps a shared link's state intact.
+#
+# Static assets are matched before this rule, so `/_app/*` is unaffected.
+/*  /  302
