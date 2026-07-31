@@ -11,3 +11,8 @@ directory = "./build"
 # paths to `/` with a 200, leaving the URL bar on a route the client router
 # doesn't know, and "404-page" would need a 404.html adapter-static never emits.
 # `_redirects` runs first and answers every miss with a 302 to `/`.
+#
+# "Runs first" is literal, and is the one thing to keep in mind when editing that
+# file: Workers Assets does not check for a matching asset before applying
+# redirects, so a rule is not scoped to 404s just because it was written for
+# them. Every path the site actually serves has to be exempted by name there.
