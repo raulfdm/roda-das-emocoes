@@ -28,7 +28,7 @@
 		 */
 		rotation: number;
 		/**
-		 * The Tertiary being read, so its wedge can say so.
+		 * The Node being read, whose Path the Wheel lights and off which everything is dimmed.
 		 *
 		 * ADR-0009 ruled there would be no mark on the Wheel, on the grounds that marking a Node is
 		 * what Selection did and Selection is gone. That was drawing the line in the wrong place. The
@@ -36,6 +36,11 @@
 		 * something to do with it — not that a tap was allowed to leave a trace. Without one the Wheel
 		 * and the readout disagree about what just happened, and a Tertiary reads as the one thing on
 		 * the Wheel that does not respond to being tapped.
+		 *
+		 * Any Node, not only a Tertiary, since ADR-0013. A Tertiary was the only Node with nothing left
+		 * to open while every screen drew fewer rings than the tree has; a desktop drawing all three
+		 * has a Core with nothing left to open too, and being read is still the only thing tapping one
+		 * can mean.
 		 */
 		reading: WheelNode | null;
 		/**
@@ -47,12 +52,14 @@
 		 * drag would spin the answer round without bringing anything new into view.
 		 */
 		turnable: boolean;
-		/** A tap on a Node with children: descend into it. */
+		/** A tap on a Node whose children are not on screen: descend into it. */
 		onDescend: (node: WheelNode) => void;
-		/** A tap on a Tertiary. It has nothing to open, so it is read instead — see ADR-0009. */
+		/** A tap on a Node with nothing left to open. It is read instead — see ADR-0009 and ADR-0013. */
 		onRead: (node: WheelNode) => void;
 		/** A tap on the centre: move the Focus up one level. */
 		onAscend: () => void;
+		/** A tap on the centre where there is no Focus to leave, only a lit Path to put out. */
+		onClear: () => void;
 		/** A drag has turned the Wheel to a new angle. */
 		onTurn: (rotation: number) => void;
 	}
@@ -69,6 +76,7 @@
 		onDescend,
 		onRead,
 		onAscend,
+		onClear,
 		onTurn
 	}: Props = $props();
 
@@ -104,16 +112,34 @@
 	const arcs = $derived(arcsFor(view.current, framing, rotation, reachOf));
 
 	/**
+	 * Whether anything on screen still has children it is not showing.
+	 *
+	 * Derived from the view rather than asked of the wedges, which would be the same question answered
+	 * 130 times a frame: `target.depth + target.rings` is the outermost ring drawn, so something opens
+	 * exactly when that stops short of the Tertiaries.
+	 */
+	const opensAnything = $derived(target.depth + target.rings < 2);
+
+	/**
 	 * Whether this Node is one the reader has looked past.
 	 *
-	 * Only its siblings dim — the Nodes it was chosen *from* — and never its ancestors, which are the
-	 * Path and stay at full strength. Dimming rather than hiding, because a word alone does not say
-	 * much: `Sobrecarregado` means what it means partly by not being `Ansiedade`, and taking the
-	 * alternative off the screen takes that with it. It also keeps the sibling tappable, which is how
-	 * you change your mind.
+	 * Everything off the lit Path dims, and the Path is the whole chain: the Node being read, the
+	 * ancestors it hangs from, and everything beneath it. Read `Raiva` and the other six Cores go with
+	 * their branches entire, while Raiva's own Secondaries and Tertiaries stay — you have narrowed to a
+	 * branch, not to a word. Read `Agressivo` and Raiva's other Secondaries go too, each taking its two
+	 * Tertiaries, until only the pair beneath `Agressivo` is left standing.
+	 *
+	 * `node.ancestors` runs Core-first and ends with the Node itself, so the two directions are one
+	 * expression each and the Node being read satisfies both.
+	 *
+	 * Dimming rather than hiding, because a word alone does not say much: `Sobrecarregado` means what
+	 * it means partly by not being `Ansiedade`, and taking the alternative off the screen takes that
+	 * with it. It also keeps every other branch tappable, which is how you change your mind.
 	 */
 	function muted(node: WheelNode): boolean {
-		return reading !== null && node !== reading && node.depth === reading.depth;
+		if (reading === null) return false;
+
+		return !node.ancestors.includes(reading) && !reading.ancestors.includes(node);
 	}
 
 	/** The Focus the Wheel has already squared up for, so one arrival is acted on once. */
@@ -139,6 +165,16 @@
 		}
 
 		stopCoasting();
+		// The angle below is computed from `rotation`, so a drag's unwritten remainder must not land on
+		// top of it a frame later.
+		cancelWrite();
+
+		// Turning is withdrawn for two unrelated reasons now, and only one of them wants squaring up. A
+		// Secondary's two Tertiaries have an orientation they belong in; a desktop that has stopped
+		// turning because a Tertiary is being read is showing the whole Wheel at whatever angle the
+		// reader left it, and lurching it up to 90° at the moment they settle on a word is the Wheel
+		// snatching back an orientation they chose.
+		if (focus?.depth !== 1) return;
 
 		if (squaredFor === focus) return;
 		squaredFor = focus;
@@ -297,7 +333,70 @@
 		});
 	}
 
-	$effect(() => stopCoasting);
+	/**
+	 * The angle a drag has reached but not yet reported, and the frame booked to report it.
+	 *
+	 * A drag samples the pointer as often as the device speaks and reports the result once per frame.
+	 * The two are separated because they want different rates: the angle is what the screen shows and
+	 * showing it twice in one frame is work nobody sees, while `velocity` is a measurement and wants
+	 * every sample it can get, since a throw is decided by the last few milliseconds of the gesture.
+	 *
+	 * `null` rather than a flag beside the number, so "nothing to report" cannot drift out of step with
+	 * what is being reported. It also makes `pending ?? rotation` the honest way to ask where the Wheel
+	 * currently is: the prop lags by up to a frame while a write is booked.
+	 *
+	 * **This costs no latency in the frame it lands in.** Browsers dispatch pointer events at the top of
+	 * the frame and run `requestAnimationFrame` callbacks after them and before rendering, so a move
+	 * sampled this frame is written this frame. What it removes is the second and third write in frames
+	 * where a device outran the display — which is where the guarantee is worth having, since how many
+	 * moves arrive per frame is the browser's business and not something to depend on.
+	 */
+	let pending: number | null = null;
+	let writing = 0;
+
+	/** Books a frame to report where the drag has got to, or updates the angle one is already booked for. */
+	function schedule(next: number) {
+		pending = next;
+		if (writing) return;
+
+		writing = requestAnimationFrame(() => {
+			writing = 0;
+			flush();
+		});
+	}
+
+	/**
+	 * Reports the pending angle now rather than on the frame booked for it.
+	 *
+	 * Release has to do this before anything else it does. A throw reads `rotation` to know where it is
+	 * starting from, and the last few pixels of a drag are exactly the ones most likely to still be
+	 * pending — so a coast that skipped this would start from a stale angle and jump backwards before
+	 * it moved forwards.
+	 *
+	 * The booked frame is left to fire and find nothing. Cancelling it would be tidier and is not worth
+	 * a second place where the handle is cleared.
+	 */
+	function flush() {
+		if (pending === null) return;
+
+		const next = pending;
+		pending = null;
+		onTurn(next);
+	}
+
+	/** Drops a pending angle unwritten, for the one caller that is about to overrule it. */
+	function cancelWrite() {
+		if (writing) cancelAnimationFrame(writing);
+
+		writing = 0;
+		pending = null;
+	}
+
+	$effect(() => () => {
+		stopCoasting();
+		cancelWrite();
+	});
+
 	/**
 	 * Whether this gesture has passed `DRAG_SLOP` and become a turn.
 	 *
@@ -309,46 +408,107 @@
 	let lastAngle = 0;
 	let downAt = { x: 0, y: 0 };
 
+	/** The point a drag is measured around, in viewport coordinates. */
+	let pivot = { x: 0, y: 0 };
+
+	/**
+	 * Finds the Wheel's centre on screen. Called once when a gesture starts, and never during it.
+	 *
+	 * `getBoundingClientRect` is a *read* of the layout, and a read after a write forces the browser to
+	 * recompute layout there and then rather than at its own convenience. During a turn every frame has
+	 * just written a new `transform` on the group holding 130 wedges, so measuring on every
+	 * `pointermove` — which is what this did — put a synchronous layout in the middle of every one of
+	 * them. Textbook layout thrash, and paid for nothing: the box does not move while the Wheel turns.
+	 * Only the pointer does, and that arrives in the event.
+	 *
+	 * Per gesture rather than once for the component, because the box does move between gestures — a
+	 * resize, a Reading appearing under the Wheel, the results list opening above it.
+	 */
+	function measurePivot() {
+		const rect = box.getBoundingClientRect();
+
+		// The centre is wherever the Framing put it — dead centre on a desktop, the box's left edge under
+		// a frame that crops — so it is read off the same percentages the readout overlay is placed with
+		// rather than assumed to be the middle of the box.
+		pivot = {
+			x: rect.left + (rect.width * centre.left) / 100,
+			y: rect.top + (rect.height * centre.top) / 100
+		};
+	}
+
 	/** The pointer's angle about the Wheel's centre, clockwise, in screen coordinates. */
 	function angleAt(event: PointerEvent): number {
-		const rect = box.getBoundingClientRect();
-		// The centre is wherever the Framing put it — dead centre on a desktop, the box's left edge on
-		// a phone — so it is read off the same percentages the readout overlay is placed with rather
-		// than assumed to be the middle of the box.
-		const cx = rect.left + (rect.width * centre.left) / 100;
-		const cy = rect.top + (rect.height * centre.top) / 100;
-
 		// `atan2` grows clockwise in SVG's y-down coordinates, which is the direction the Wheel's own
 		// angles grow, so the delta below carries straight through with no sign correction.
-		return Math.atan2(event.clientY - cy, event.clientX - cx);
+		return Math.atan2(event.clientY - pivot.y, event.clientX - pivot.x);
+	}
+
+	/**
+	 * Takes the pointer for the rest of the gesture, so a drag that wanders off the box keeps turning
+	 * the Wheel and its release is still heard.
+	 *
+	 * **Claimed when the gesture becomes a turn, never at `pointerdown`** — and that timing is the whole
+	 * of why taps worked on a phone and did nothing at all on a desktop. Capturing retargets `pointerup`
+	 * to the capturing element, and a browser picks the `click` target as the nearest common ancestor of
+	 * the down and the up: capture from `pointerdown` therefore moves every click off the wedge it landed
+	 * on and onto this box, where nothing listens. Safari's touch path builds its click from the touch
+	 * target instead and never noticed; Chrome and Firefox followed the spec, so the desktop Wheel — every
+	 * wedge and the centre button with them — was inert.
+	 *
+	 * Deferring costs nothing, because the capture is only there to survive leaving the box and a
+	 * gesture cannot leave it in the `DRAG_SLOP` pixels before this fires.
+	 */
+	function capture(event: PointerEvent) {
+		if (box.hasPointerCapture(event.pointerId)) return;
+
+		box.setPointerCapture(event.pointerId);
 	}
 
 	function grab(event: PointerEvent) {
 		if (event.pointerType === 'mouse' && event.button !== 0) return;
-		// A settled Wheel does not turn, and must not swallow the page's own gestures either.
-		if (!turnable) return;
 
 		// Catching a coasting Wheel is about the spin, not about what is under the finger, so the
-		// gesture is marked as a turn from the outset and the click it raises opens nothing.
+		// gesture is marked as a turn from the outset and the click it raises opens nothing. Cleared
+		// even where the Wheel does not turn, so a stale flag from an earlier drag cannot swallow the
+		// first tap after turning is withdrawn.
 		dragged = coasting !== 0;
 		stopCoasting();
+
+		// A settled Wheel does not turn, and must not swallow the page's own gestures either.
+		if (!turnable) return;
 
 		velocity = 0;
 		turning = true;
 		downAt = { x: event.clientX, y: event.clientY };
+		measurePivot();
 		lastAngle = angleAt(event);
 		lastTime = event.timeStamp;
-		box.setPointerCapture(event.pointerId);
+		if (dragged) capture(event);
 	}
 
 	function turn(event: PointerEvent) {
 		if (!turning) return;
+
+		// Nothing is pressed any more, so the release happened somewhere we never heard it — which is
+		// only reachable in the uncaptured window before `DRAG_SLOP`, and only by letting go just
+		// outside the box. Without this the next aimless pass over the Wheel would turn it.
+		//
+		// Asked only while that window is open. A gesture that has taken the pointer hears its own
+		// release by construction, and a `buttons` a device reports oddly mid-drag must not be allowed
+		// to drop a turn the reader is in the middle of.
+		if (!dragged && event.buttons === 0) {
+			turning = false;
+			flush();
+
+			return;
+		}
 
 		const now = angleAt(event);
 
 		if (!dragged) {
 			if (Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) <= DRAG_SLOP) return;
 			dragged = true;
+			capture(event);
 			// Re-anchored at the moment the gesture becomes a turn, so the Wheel does not jump by the
 			// slop the reader has already spent proving they meant it.
 			lastAngle = now;
@@ -374,14 +534,20 @@
 
 		lastAngle = now;
 		lastTime = event.timeStamp;
-		onTurn(rotation + delta);
+		// From wherever the drag has actually got to, which is the pending angle if a write is booked.
+		// Reading the prop here would apply this delta to an angle one or more samples out of date and
+		// throw the difference away.
+		schedule((pending ?? rotation) + delta);
 	}
 
 	function release(event: PointerEvent) {
 		if (!turning) return;
 
 		turning = false;
-		box.releasePointerCapture(event.pointerId);
+		// Before anything that reads `rotation` — see `flush`.
+		flush();
+		// Only a gesture that became a turn ever took the pointer; a tap never did.
+		if (box.hasPointerCapture(event.pointerId)) box.releasePointerCapture(event.pointerId);
 
 		// A pause before letting go means the Wheel was placed, not thrown.
 		if (event.timeStamp - lastTime > STALE_MS) velocity = 0;
@@ -453,7 +619,7 @@
 						Giving these paths a second set of semantics is exactly the duplicate UI the twin
 						exists to avoid.
 					-->
-					{@const opens = descendsInto(wedge.node)}
+					{@const opens = descendsInto(wedge.node, target)}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<path
@@ -530,6 +696,34 @@
 				<span class="centre-path">{path}</span>
 			{/if}
 		</button>
+	{:else if reading}
+		<!--
+			No Focus to leave, so the centre is the way out of the *Reading* instead: it puts the lit Path
+			out and gives the whole Wheel back at full strength.
+
+			It needs to be somewhere, and this is the only place it can be. Where every ring is already
+			drawn nothing descends, so the row of ways back below the Wheel never appears — it is keyed on
+			a Focus, and there has not been one. Tapping the lit Node again also clears it, but that is a
+			thing you have to guess; the middle of the Wheel is where the eye already is.
+		-->
+		{@const path = formatPath(reading, locale)}
+		<button
+			type="button"
+			class="centre"
+			style:left="{centre.left}%"
+			style:top="{centre.top}%"
+			style:width="{centre.width}%"
+			style:height="{centre.height}%"
+			aria-label={words.clear(path)}
+			onclick={tap(onClear)}
+		>
+			<!-- A cross rather than the ascent arrow: nothing is being climbed out of, only put out. -->
+			<span aria-hidden="true" class="centre-up">×</span>
+
+			{#if !cropped}
+				<span class="centre-path">{path}</span>
+			{/if}
+		</button>
 	{:else}
 		<div
 			class="centre centre-idle"
@@ -539,7 +733,12 @@
 			style:height="{centre.height}%"
 		>
 			{#if !cropped}
-				<span class="centre-hint">{words.centreHint}</span>
+				<!--
+					What a tap does depends on whether there is anything left to open, and on a Wheel drawing
+					every ring there is not. Promising `entre nela` where nothing descends is the centre
+					describing the app it used to be.
+				-->
+				<span class="centre-hint">{opensAnything ? words.centreHint : words.pathHint}</span>
 			{/if}
 		</div>
 	{/if}
@@ -674,11 +873,19 @@
 	}
 
 	.wedge {
-		transition: opacity 200ms ease-out;
 		fill: hsl(var(--h) var(--s) var(--l));
 		stroke: color-mix(in oklab, hsl(var(--h) var(--s) calc(var(--l) - 45%)) 55%, transparent);
 		stroke-width: 0.003;
-		transition: filter 120ms ease-out;
+		/*
+			One declaration carrying both. It was two, and the second silently threw the first away — the
+			transition written for the dimming never ran, which nobody could see while dimming was two
+			Tertiaries changing at once. It is most of the Wheel now, and a hard cut across six branches
+			reads as a redraw rather than as an answer.
+		*/
+		transition:
+			fill-opacity 200ms ease-out,
+			stroke-opacity 200ms ease-out,
+			filter 120ms ease-out;
 	}
 
 	/*
@@ -699,20 +906,44 @@
 	}
 
 	/*
-		The Tertiaries the reader looked past. Marked by taking strength *away* from them rather than
-		adding any to the one that was chosen — an outline was tried and is worse, because a hard black
-		line around a wedge reads as a control rather than as an answer, and it fights the palette,
-		which is the only thing on the Wheel carrying which Core you are in.
+		Everything the reader looked past. Marked by taking strength *away* from it rather than adding
+		any to the Path that was lit — an outline was tried and is worse, because a hard black line
+		around a wedge reads as a control rather than as an answer, and it fights the palette, which is
+		the only thing on the Wheel carrying which Core you are in.
 
 		Enough of a drop to be unambiguous at a glance, not so much that the word stops being legible:
-		it is still a real alternative, and still one tap away.
+		every one of these is still a real alternative, and still one tap away.
+
+		**`fill-opacity` and `stroke-opacity`, never `opacity`** — and the difference is the whole of why
+		the Wheel would not spin. `opacity` on an element makes it an isolated transparency group, which
+		a browser paints by allocating an offscreen surface, drawing into it and compositing the result.
+		One of those is free. A hundred and ten of them, thrown away and rebuilt on every frame of a
+		drag because the group above is rotating, is the frame rate. These two are painting attributes
+		instead: they scale the alpha of the fill and the stroke as they are drawn, with no surface and
+		no compositing step. Same picture, and the only thing this Wheel ever needed.
+
+		It made no difference while a Reading dimmed two Tertiaries and the reference implementation
+		never turned. It makes all of it when six branches out of seven dim and the Wheel is spinning.
 	*/
 	.wedge.muted {
-		opacity: 0.28;
+		fill-opacity: 0.28;
+		stroke-opacity: 0.28;
 	}
 
-	.wedge.muted:hover {
+	/*
+		A dimmed wedge still answers the pointer, and on a Wheel where six branches out of seven are
+		dimmed at once that matters more than it did when this was two Tertiaries. `filter` is no use
+		here — brightening something already down at 0.28 does nothing you can see — so the hover comes
+		back up the same axis it went down, far enough to read as reachable and not so far as to look
+		lit.
+
+		Scoped away from a turning Wheel rather than overridden after it. While a drag is on, the pointer
+		is driving and is not aimed at whatever happens to be sliding under it.
+	*/
+	.wheel:not(.turning) .wedge.muted:hover {
 		filter: none;
+		fill-opacity: 0.55;
+		stroke-opacity: 0.55;
 	}
 
 	/*
@@ -749,8 +980,9 @@
 		pointer-events: none;
 	}
 
+	/* `fill-opacity` for the same reason the wedges use it — see `.wedge.muted`. */
 	text.muted {
-		opacity: 0.35;
+		fill-opacity: 0.35;
 	}
 
 	text {
@@ -770,7 +1002,7 @@
 		dominant-baseline: auto;
 		fill: #1c1917;
 		font-family: inherit;
-		transition: opacity 200ms ease-out;
+		transition: fill-opacity 200ms ease-out;
 	}
 
 	/*
@@ -781,7 +1013,17 @@
 		position: absolute;
 		translate: -50% -50%;
 		display: grid;
-		place-items: center;
+		/*
+			`align-content`, not `place-items`. It was the latter, which centres each row inside the track
+			it was given and says nothing about the tracks themselves — and the tracks stretch, so the
+			glyph and the Path each got half the hole and were centred in their own half. The pair then
+			sits as far apart as the circle allows: the arrow rides high, the Path rides low, and neither
+			is on the middle. Invisible while the Path was one line and obvious at three, which is what a
+			desktop reading `Medo › Ansiedade › Preocupação` gets.
+
+			This centres the two of them as one block, which is what they are.
+		*/
+		align-content: center;
 		border-radius: 9999px;
 		padding: 0 4%;
 		background: #fffdf9;

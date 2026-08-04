@@ -22,8 +22,17 @@ export interface Words {
 	loading: string;
 	title: string;
 	tagline: string;
-	/** What a tap on the Wheel does. Tapping still only opens; reading a Tertiary is the other half. */
+	/** What a tap on the Wheel does where there is still something to open. */
 	centreHint: string;
+	/**
+	 * What a tap does where there is not — a desktop drawing all three rings.
+	 *
+	 * Nothing descends there, so `centreHint`'s promise of entering a feeling would describe an app
+	 * this one has stopped being on that screen. What a tap does instead is light the Path down to the
+	 * Node and take strength away from everything else, and the hint says so in those terms: the
+	 * reader is being told they can point at the Wheel, not that they can go somewhere.
+	 */
+	pathHint: string;
 	/**
 	 * That the Wheel turns.
 	 *
@@ -41,10 +50,12 @@ export interface Words {
 	 * The way back to the Cores, named after where it lands rather than after what it shows.
 	 *
 	 * It read `Ver a roda inteira` — *show the whole wheel* — which was true when it was written and
-	 * has not been since the ring count was cut. A phone draws one ring outward from the Focus, so what
-	 * this button actually returns you to is seven Cores out of 130 Nodes; a desktop draws two, which is
-	 * 48. Neither is the whole Wheel, and ADR-0011 settled that neither is going to be — the all-130
-	 * view was given up for legible type, deliberately.
+	 * stopped being so when the ring count was cut. A phone draws one ring outward from the Focus, so
+	 * what this button actually returns you to is seven Cores out of 130 Nodes.
+	 *
+	 * A desktop draws all three again (ADR-0013), so the retired promise would be honest there — and the
+	 * words stay as they are, because this button never appears on that screen. It is keyed on a Focus,
+	 * and a Wheel where nothing descends never has one.
 	 *
 	 * So the words name the destination instead of promising a view. The Cores are where you start, and
 	 * `início` says that without reaching for `principais` or `base`, which are the app's own words for
@@ -67,12 +78,21 @@ export interface Words {
 	inFocus: string;
 	descend: (label: string) => string;
 	/**
-	 * What a tap on a Tertiary does. It has nothing to open, so it is brought up to be read.
+	 * What a tap on a Node with nothing left to open does: it is brought up to be read.
 	 *
 	 * Deliberately not `choose`, `select` or `pick`: nothing is chosen and nothing is kept. See
-	 * ADR-0009, which reopened the tap without reopening Selection.
+	 * ADR-0009, which reopened the tap without reopening Selection, and ADR-0013, which widened it
+	 * past the Tertiaries without doing so either.
 	 */
 	read: (label: string) => string;
+	/**
+	 * Putting a lit Path out, which is what the centre offers where there is no Focus to leave.
+	 *
+	 * Takes the Path rather than the Label because it names what is on screen, and what is on screen
+	 * is a whole branch at full strength with the rest of the Wheel dimmed behind it. Not `close` or
+	 * `dismiss`: nothing was opened.
+	 */
+	clear: (path: string) => string;
 	credit: string;
 	creditLink: string;
 }
@@ -83,6 +103,7 @@ export const WORDS: Record<Locale, Words> = {
 		title: 'Roda das Emoções',
 		tagline: 'Do "sinto-me mal" à palavra exata, em três toques.',
 		centreHint: 'Toque numa emoção para entrar nela.',
+		pathHint: 'Toque numa emoção para destacar o seu caminho.',
 		turnHint: 'Arraste a roda para girá-la.',
 		localeSwitcher: 'Idioma',
 		searchLabel: 'Procurar um sentimento',
@@ -97,6 +118,7 @@ export const WORDS: Record<Locale, Words> = {
 		inFocus: 'em foco',
 		descend: (label) => `Abrir ${label}`,
 		read: (label) => `Ver ${label}`,
+		clear: (path) => `Limpar ${path}`,
 		credit: 'Roda criada por Geoffrey Roberts —',
 		creditLink: 'feelingswheel.app'
 	},
@@ -105,6 +127,7 @@ export const WORDS: Record<Locale, Words> = {
 		title: 'Wheel of Emotions',
 		tagline: 'From "I feel bad" to the exact word, in three taps.',
 		centreHint: 'Tap a feeling to open it.',
+		pathHint: 'Tap a feeling to light up its path.',
 		turnHint: 'Drag the wheel to turn it.',
 		localeSwitcher: 'Language',
 		searchLabel: 'Search for a feeling',
@@ -121,6 +144,7 @@ export const WORDS: Record<Locale, Words> = {
 		inFocus: 'in focus',
 		descend: (label) => `Open ${label}`,
 		read: (label) => `Show ${label}`,
+		clear: (path) => `Clear ${path}`,
 		credit: 'Wheel created by Geoffrey Roberts —',
 		creditLink: 'feelingswheel.app'
 	},
@@ -131,6 +155,7 @@ export const WORDS: Record<Locale, Words> = {
 		// takes the straight ones PT and EN already use for the same sentence.
 		tagline: 'De "me siento mal" a la palabra exacta, en tres toques.',
 		centreHint: 'Toca una emoción para abrirla.',
+		pathHint: 'Toca una emoción para destacar su camino.',
 		turnHint: 'Arrastra la rueda para girarla.',
 		localeSwitcher: 'Idioma',
 		searchLabel: 'Buscar un sentimiento',
@@ -145,6 +170,7 @@ export const WORDS: Record<Locale, Words> = {
 		inFocus: 'en foco',
 		descend: (label) => `Abrir ${label}`,
 		read: (label) => `Ver ${label}`,
+		clear: (path) => `Borrar ${path}`,
 		credit: 'Rueda creada por Geoffrey Roberts —',
 		creditLink: 'feelingswheel.app'
 	}

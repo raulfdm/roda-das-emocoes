@@ -1,19 +1,27 @@
 <script lang="ts">
 	import type { Words } from '$lib/words';
-	import { descendsInto } from './geometry';
+	import { descendsInto, type View } from './geometry';
 	import { cores, labelOf, tintStyle, type Locale, type WheelNode } from './wheel';
 
 	interface Props {
 		focus: WheelNode | null;
 		locale: Locale;
 		words: Words;
-		/** The Tertiary currently being read, so the twin can say which one it is. */
+		/** The Node currently being read, so the twin can say which one it is. */
 		reading: WheelNode | null;
+		/**
+		 * What the Wheel is showing, which is what decides whether a Node opens or is read.
+		 *
+		 * The twin exists to carry the same rules in another form, and this is a rule: a Node whose
+		 * children are already on screen has nothing to open. Handed in rather than re-derived so the
+		 * two can never disagree about which verb a given button performs.
+		 */
+		view: View;
 		onDescend: (node: WheelNode) => void;
 		onRead: (node: WheelNode) => void;
 	}
 
-	let { focus, locale, words, reading, onDescend, onRead }: Props = $props();
+	let { focus, locale, words, reading, view, onDescend, onRead }: Props = $props();
 </script>
 
 <!--
@@ -26,14 +34,17 @@
 		{#each nodes as node (node.id)}
 			{@const label = labelOf(node, locale)}
 			{@const inFocus = focus === node}
-			{@const opens = descendsInto(node)}
+			{@const opens = descendsInto(node, view)}
 			<li>
 				<!--
-					Both are buttons now, and they do different things. A Node with children opens; a
-					Tertiary has nothing beneath it and is read instead (ADR-0009). The twin has to carry
-					that distinction rather than flatten it, because "opens" and "reads" are what the two
-					halves of the Wheel actually offer — which is why the accessible name comes from
-					`descend` or `read` and never from the Label alone.
+					Both are buttons now, and they do different things. A Node whose children are not on
+					screen opens; one with nothing left to open is read instead (ADR-0009, ADR-0013). The
+					twin has to carry that distinction rather than flatten it, because "opens" and "reads"
+					are what the two halves of the Wheel actually offer — which is why the accessible name
+					comes from `descend` or `read` and never from the Label alone.
+
+					Which verb a Node gets therefore moves with the screen: on a desktop drawing every ring
+					nothing opens and all 130 are read, which is exactly what the graphic beside it does.
 
 					A Tertiary used to be a paragraph here, on the grounds that a control which did
 					nothing was worse than text. It does something now, so it is a control.

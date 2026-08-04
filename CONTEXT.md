@@ -63,20 +63,25 @@ the Focus is how someone descends into the Wheel, and it is where you are in the
 can never be the Focus — it has no children to spread.
 _Avoid_: Root, zoom target, current node, active, selection
 
+> **A desktop has no Focus at all** (ADR-0013). It draws all three rings, so there is nothing out of
+> sight to descend to and nothing ever moves the Focus off the whole Wheel. Descending is a phone
+> mechanism now; a desktop reads the Wheel where it stands.
+
 > **Selection is gone** — the Node someone had settled on, kept distinct from Focus. Nothing is
 > chosen, marked or copied any more; the Wheel is navigated, not answered. See ADR-0006. The word is
 > retired rather than free: do not reintroduce it for the Focus, which is what the _Avoid_ above is
 > guarding — nor for the Reading below, which is a near neighbour and the likelier slip.
 
 **Reading**:
-The Tertiary someone has tapped, brought up beside the Wheel so its Label can be read at a size the
-rim cannot give it. A Tertiary has nothing to open, so being read is the only thing tapping it can
-mean. A Reading lasts until the next move and no longer — descending, ascending or returning to the
-Cores all drop it (ADR-0009).
-_Avoid_: Selection, chosen, picked, answer, result
+The Node someone has tapped, whose Path the Wheel lights while everything off it dims, and whose Label
+comes up beside the Wheel at a size the rim cannot give it. Reading is what a tap means wherever there
+is nothing left to open — which was only a Tertiary while every screen drew fewer rings than the tree
+has, and is any Node on a desktop drawing all three (ADR-0013). A Reading lasts until the next move
+and no longer — descending, ascending, clearing it or returning to the Cores all drop it (ADR-0009).
+_Avoid_: Selection, chosen, picked, answer, result, highlight
 
-> **A Reading is not a Selection**, and the difference is not a shade of meaning. Nothing is marked on
-> the Wheel, nothing is kept, nothing can be taken away. The noun is deliberately an act rather than
+> **A Reading is not a Selection**, and the difference is not a shade of meaning. Something is dimmed
+> on the Wheel, but nothing is kept, and nothing can be taken away. The noun is deliberately an act rather than
 > a status: you read a Node, a Node is never "the reading" in the way it would have been "the
 > selection".
 

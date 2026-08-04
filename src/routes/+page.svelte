@@ -3,6 +3,7 @@
 	import Wheel from '$lib/wheel/Wheel.svelte';
 	import WheelList from '$lib/wheel/WheelList.svelte';
 	import { WHOLE, cropsCentre } from '$lib/wheel/framing';
+	import { descendsInto, focusOn } from '$lib/wheel/geometry';
 	import {
 		DEFAULT_LOCALE,
 		LOCALES,
@@ -52,12 +53,16 @@
 	let rotation = $state(0);
 
 	/**
-	 * The Tertiary being read, if the reader has tapped one.
+	 * The Node being read, if the reader has tapped one with nothing left to open.
 	 *
 	 * This is *not* Selection coming back (ADR-0006, and see ADR-0009 for the line). Nothing is
-	 * chosen: there is no highlight on the Wheel, nothing to clear, nothing to copy and nothing that
-	 * outlives the next move. A Tertiary has no children to spread, so tapping it cannot descend — it
-	 * brings the word up to where it can be read, and that is all it does.
+	 * chosen: nothing is kept, nothing can be copied, and nothing outlives the next move. What a
+	 * Reading does is light the Path down to it and take strength away from everything else, which is
+	 * a way of looking at the Wheel rather than an answer taken off it.
+	 *
+	 * Any Node since ADR-0013, where it was a Tertiary before. The rule did not change — a tap on
+	 * something with nothing beneath it left to draw can only mean *read this* — but a desktop drawing
+	 * all three rings has Cores and Secondaries in that position too.
 	 *
 	 * `$state.raw` for the same reason `focus` is: a Node is immutable and cyclic, and deep-proxying
 	 * one breaks every identity comparison it takes part in.
@@ -121,28 +126,29 @@
 	const stillness = new MediaQuery('prefers-reduced-motion: reduce', false);
 
 	/**
-	 * How many rings are drawn outward from the Focus: two on a desktop, one on a phone.
+	 * How many rings are drawn outward from the Focus: all three on a desktop, one on a phone.
 	 *
-	 * Two rather than three, which is what shipped first, because three was the only state in the
-	 * app with unreadable type. Measured at the Cores on a 1440x900 desktop, in Portuguese: three
-	 * rings draws all 130 Nodes with Labels from 7.8px to 15px, median 12.1px — `Sobrecarregado` at
-	 * 7.8px is a smudge. Two rings draws 48, every Core and every Secondary, at 13.6px to 22.5px,
-	 * median 20.4px. The Tertiaries are one tap away and arrive at 18.8px.
+	 * **Three again** (ADR-0013). It was three, then two, and the reason it was cut is unchanged and
+	 * still costly: measured at the Cores on a 1440x900 desktop, in Portuguese, three rings draws all
+	 * 130 Nodes with Labels from 7.8px to 15px, median 12.1px, where two draws 48 at 13.6px to 22.5px.
+	 * `Sobrecarregado` at 7.8px is a smudge and saying otherwise would be pretending.
 	 *
-	 * It costs the all-130-at-once view that ADR-0001 counted as the desktop's advantage over a
-	 * phone. That is a real loss and it is deliberate: the overview was only ever legible as a shape,
-	 * and a shape is what two rings still gives you.
+	 * What changed is what the small type is *for*. Under two rings a Tertiary was read by descending to
+	 * it, so the rim was a promise of somewhere to go and had to be legible to be worth going. Under
+	 * three nothing descends on a desktop — the Wheel is read where it stands, by lighting a Path — and
+	 * the rim's job becomes carrying the shape of a branch rather than 82 words you read one at a time.
+	 * The word you settle on is not read off the rim at all: it comes up beneath the Wheel at 30px.
 	 *
-	 * **The phone keeps one, and ticket 05's ruling stands after all** (ADR-0011). It briefly got two,
-	 * on the strength of a framing that bought the radius to carry them by cropping the Wheel top and
-	 * bottom. The crop was rejected, and with it goes the radius, and with the radius goes the second
-	 * ring: on the whole disc a phone draws all 48 Cores and Secondaries at 11.2px median, which is
-	 * the same unreadable state this ring count exists to prevent.
+	 * So the trade is the other way round from ADR-0001's. What three rings buys is Roberts' poster,
+	 * whole and at once, which is the thing a desktop has the room for and a phone does not.
 	 *
-	 * Two phases at once and an uncropped Wheel cannot both be had at 398px. That is arithmetic rather
-	 * than a preference, and the Wheel being whole won.
+	 * **The phone keeps one, and ticket 05's ruling stands** (ADR-0011). It briefly got two, on the
+	 * strength of a framing that bought the radius to carry them by cropping the Wheel top and bottom.
+	 * The crop was rejected, and with it goes the radius, and with the radius goes the second ring: on
+	 * the whole disc a phone draws all 48 Cores and Secondaries at 11.2px median, which is the same
+	 * unreadable state this ring count exists to prevent. A phone descends, and always did.
 	 */
-	const rings = $derived(wide.current ? 2 : 1);
+	const rings = $derived(wide.current ? 3 : 1);
 
 	/**
 	 * How much of the Wheel's plane is on screen. The whole disc, on every screen (ADR-0011).
@@ -159,6 +165,16 @@
 	 */
 	const framing = WHOLE;
 
+	/**
+	 * What the Wheel is showing, computed here as well as inside it.
+	 *
+	 * Not duplication for its own sake: what a tap *does* depends on how much is already drawn, and
+	 * the search results and the accessible list have to answer that question with the same view the
+	 * graphic answers it with. Cheap — it is four numbers off a map lookup — and settled rather than
+	 * tweened, so nothing here depends on how far an animation has got.
+	 */
+	const view = $derived(focusOn(focus, rings));
+
 	const words = $derived(WORDS[locale]);
 
 	/**
@@ -174,11 +190,12 @@
 	}
 
 	/**
-	 * A tap on a Tertiary. Nothing to open, so it comes up to be read.
+	 * A tap on a Node with nothing left to open. It comes up to be read.
 	 *
-	 * Tapping the same one again puts it back. Reading a Tertiary hides its siblings, so without this
+	 * Tapping the same one again puts it back. Reading dims everything off the Path, so without this
 	 * the only ways out of that state would be upward — and a reader who has just settled on the wrong
-	 * word wants the one next to it, not the level above.
+	 * word wants the one next to it, not the level above. On a desktop, where nothing descends, it is
+	 * not merely convenient: tapping again and the centre are the only two ways out there are.
 	 */
 	function read(node: WheelNode) {
 		reading = reading === node ? null : node;
@@ -197,10 +214,15 @@
 	 * rotate an answer you can already read. Nor is it once a Tertiary is being read, where the
 	 * descent has ended and the Wheel has narrowed to that one wedge.
 	 *
+	 * A *Tertiary* being read, not any Reading. On a desktop a Core or a Secondary can be read too and
+	 * that is not the end of anything — you are looking at a branch and may well want to bring it
+	 * round to somewhere comfortable, so withdrawing the gesture there would take away the one thing
+	 * that makes the far side of a full Wheel readable.
+	 *
 	 * Decided here rather than inside the Wheel because it turns on the two things this page owns, and
 	 * because the hint that advertises the gesture has to agree with whether the gesture exists.
 	 */
-	const turnable = $derived(reading === null && focus?.depth !== 1);
+	const turnable = $derived(reading?.depth !== 2 && focus?.depth !== 1);
 
 	let query = $state('');
 	const results = $derived(searchNodes(query, locale));
@@ -237,9 +259,21 @@
 	 *
 	 * A Tertiary is then also left as the reading, because it is the word that was searched for and
 	 * arriving at its parent without it would answer a question the reader did not ask.
+	 *
+	 * Where the Node is already drawn and has nothing left to open, the search has nowhere to move to
+	 * and only has to point: it lights the Node where it stands. That is every result on a desktop,
+	 * and it is the difference between search answering *where is Sobrecarregado* and search throwing
+	 * away a whole Wheel the reader could see in order to answer it.
 	 */
 	function pickResult(node: WheelNode) {
 		clearSearch();
+
+		if (node.depth <= view.depth + view.rings && !descendsInto(node, view)) {
+			reading = node;
+
+			return;
+		}
+
 		focus = node.children.length ? node : node.parent;
 		reading = node.children.length ? null : node;
 	}
@@ -409,23 +443,32 @@
 				onDescend={descend}
 				onRead={read}
 				onAscend={ascend}
+				onClear={() => (reading = null)}
 				onTurn={(next) => (rotation = next)}
 			/>
 
 			{#if reading}
 				<!--
-					The answer, and the end of the descent. Below the Wheel rather than above it, and set
-					large, because at this point the word is the page: the Wheel above has narrowed to the
-					single wedge it names, and everything else on screen is a way back.
+					The word, at a size the rim cannot give it. Below the Wheel rather than above it, and set
+					large, because at this point the word is the page: the Wheel above has dimmed to the one
+					branch it names, and everything else on screen is a way back.
 
-					The Path stays with it in small type. Several Labels sit on more than one Node —
-					`Desapontado` on three — so the word alone does not say which feeling you arrived at.
+					It carries the whole weight of the small type on a desktop rim. 82 Tertiaries drawn at
+					once put `Sobrecarregado` at 7.8px, which is a shape rather than a word — and the answer
+					to that is not to draw fewer of them but to say the one you touched at 30px, here.
+
+					The Path stays with it in small type, and only where it says something the Label does
+					not. Several Labels sit on more than one Node — `Desapontado` on three — so the word
+					alone does not identify a Tertiary; a Core's Path is the Core, and printing `Raiva`
+					twice under itself is the readout padding.
 				-->
 				<p class="mt-4 text-center text-balance" aria-live="polite">
 					<span class="block text-3xl font-semibold text-stone-900">
 						{labelOf(reading, locale)}
 					</span>
-					<span class="mt-1 block text-sm text-stone-500">{formatPath(reading, locale)}</span>
+					{#if reading.depth > 0}
+						<span class="mt-1 block text-sm text-stone-500">{formatPath(reading, locale)}</span>
+					{/if}
 				</p>
 			{:else if rotation === 0 && turnable}
 				<!--
@@ -483,7 +526,7 @@
 				{words.listHeading}
 			</summary>
 			<p class="mt-1 mb-3 text-sm text-stone-500">{words.listHint}</p>
-			<WheelList {focus} {locale} {words} {reading} onDescend={descend} onRead={read} />
+			<WheelList {focus} {locale} {words} {reading} {view} onDescend={descend} onRead={read} />
 		</details>
 
 		<footer class="mt-auto pt-2 text-sm text-stone-500">

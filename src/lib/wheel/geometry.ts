@@ -160,20 +160,26 @@ export interface WheelArc {
 }
 
 /**
- * Whether tapping this Node goes deeper. It does, whenever there is anything below it.
+ * Whether tapping this Node goes deeper. It does only when there is something below it that the view
+ * is not already drawing.
  *
- * This used to be conditional on the view — a Node whose children were already drawn did not
- * descend, it settled, so that clicking the fully expanded desktop poster highlighted a Path instead
- * of re-rooting the whole thing. That rule existed to keep descending and arriving apart, and
- * arriving is gone: there is no Selection to settle into (ADR-0006). What it cost while it stood was
- * a desktop where clicking a Core did nothing visible at all, because a Core's children are on
- * screen from the start and the click had nowhere to go but a highlight.
+ * This was conditional on the view, then it was not, and it is again. The rule was dropped because it
+ * cost a desktop where clicking a Core did nothing visible at all: a Core's children were on screen
+ * from the start, so the click had nowhere to go but a highlight, and no highlight had been drawn.
+ * Making descent unconditional fixed the silence by giving every tap somewhere to go — at the price
+ * of re-rooting a Wheel that was already showing the answer.
  *
- * So it is ticket 03's original wording after all — tapping a Node with children makes it the Focus
- * — and a Tertiary, having nothing beneath it, is not interactive. It is the answer; you read it.
+ * The highlight exists now: a tap lights the Path and dims everything off it. So the rule can come
+ * back and say the honest thing — descending is how you reach what you cannot see. A desktop drawing
+ * all three rings has nothing left to reach and nothing there descends; a phone drawing one ring has
+ * two levels out of sight, so its Cores and Secondaries still open.
+ *
+ * `view.depth + view.rings` is the depth of the outermost ring drawn, so a Node's children are on
+ * screen exactly when `node.depth + 1` is no deeper than that. Ask this of a *settled* view: mid-tween
+ * both fields are fractional, and what a tap does must not depend on how far an animation has got.
  */
-export function descendsInto(node: WheelNode): boolean {
-	return node.children.length > 0;
+export function descendsInto(node: WheelNode, view: View): boolean {
+	return node.children.length > 0 && node.depth + 1 > view.depth + view.rings;
 }
 
 /** d3's default arc accessors read exactly these four fields, so no configuration is needed. */

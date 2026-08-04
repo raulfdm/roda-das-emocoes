@@ -8,6 +8,7 @@ import {
 	labelOf,
 	nodeByPath,
 	nodesAtDepth,
+	PATH_DISPLAY_SEPARATOR,
 	pathLabels,
 	type Locale,
 	type WheelNode
@@ -150,11 +151,20 @@ describe('Paths', () => {
 		}
 	});
 
+	/**
+	 * Joined with the exported separator rather than a literal, because the separator carries a
+	 * non-breaking space that no reader of this file — or of a diff of it — can see. Written out it
+	 * looks like an ordinary one, and the assertion would fail for a reason nobody could read.
+	 */
 	it('read from the Core down to the Node', () => {
 		const overwhelmed = nodeByPath(['Mal', 'Estresse', 'Sobrecarregado'], 'pt');
 
 		expect(overwhelmed).not.toBeNull();
-		expect(formatPath(overwhelmed!, 'pt')).toBe('Mal › Estresse › Sobrecarregado');
-		expect(formatPath(overwhelmed!, 'en')).toBe('Bad › Stressed › Overwhelmed');
+		expect(formatPath(overwhelmed!, 'pt')).toBe(
+			['Mal', 'Estresse', 'Sobrecarregado'].join(PATH_DISPLAY_SEPARATOR)
+		);
+		expect(formatPath(overwhelmed!, 'en')).toBe(
+			['Bad', 'Stressed', 'Overwhelmed'].join(PATH_DISPLAY_SEPARATOR)
+		);
 	});
 });

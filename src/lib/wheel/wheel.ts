@@ -16,8 +16,15 @@ export const LOCALE_NAMES: Record<Locale, string> = {
 /** 0 for a Core, 1 for a Secondary, 2 for a Tertiary. */
 export type Depth = 0 | 1 | 2;
 
-/** The separator between Labels in a Path on screen. The only one there is — see ADR-0005. */
-export const PATH_DISPLAY_SEPARATOR = ' › ';
+/**
+ * The separator between Labels in a Path on screen. The only one there is — see ADR-0005.
+ *
+ * The leading space is a non-breaking one, so a wrap can only ever happen *after* a `›` and never
+ * before it. A Path is the one string in the app that regularly wraps — three Portuguese Labels do
+ * not fit across the centre hole — and a line beginning `› Preocupação` reads as a fragment rather
+ * than as a continuation.
+ */
+export const PATH_DISPLAY_SEPARATOR = ' › ';
 
 /** The colour a Node is drawn in: its Core's hue, lightened by how far out it sits. */
 export interface Tint {
